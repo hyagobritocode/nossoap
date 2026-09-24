@@ -25,6 +25,6 @@ Os dados ficam no `localStorage` do navegador (chave `nosso-ape-v7`), então cad
 ## Arquivos
 
 - `index.html`, `styles.css`, `app.js`: a página inteira, sem dependências.
-- `assets/rooms/`: fotos reais dos cômodos em WebP (versão grande e `-sm`).
+- `assets/rooms/`: fotos reais dos cômodos em WebP.
 - `assets/fonts/`: Geist (SIL OFL), servida localmente.
 - Ícones: [Tabler Icons](https://tabler.io/icons) (MIT), embutidos em `app.js`.

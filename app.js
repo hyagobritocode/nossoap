@@ -15,7 +15,7 @@
     { id: "hall",       name: "Entrada",         photo: "hall",         pos: "50% 55%", band: "50% 42%" }
   ];
   const roomOf = id => ROOMS.find(r => r.id === id) || ROOMS[0];
-  const photoOf = (room, small) => `assets/rooms/${room.photo}${small ? "-sm" : ""}.webp`;
+  const photoOf = room => `assets/rooms/${room.photo}.webp`;
 
   // ---------- ícones (Tabler Icons, MIT) ----------
   const ICONS = {
