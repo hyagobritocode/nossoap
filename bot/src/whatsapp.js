@@ -8,6 +8,7 @@ import { rmSync } from "node:fs";
 import { join } from "node:path";
 import pino from "pino";
 import qrcode from "qrcode-terminal";
+import QRCode from "qrcode";
 import { ago, makeDateFmt } from "./agent.js";
 import { friendlyError } from "./llm.js";
 
@@ -41,6 +42,7 @@ export async function startWhatsApp({ db, agent, config }) {
   const logger = pino({ level: config.logLevel });
   const fmtDate = makeDateFmt(config.timeZone);
   const authDir = join(config.dataDir, "sessao");
+  const qrFile = join(config.dataDir, "qr.png");
 
   const groupAllowed = name => {
     const n = norm(name);
@@ -233,10 +235,14 @@ export async function startWhatsApp({ db, agent, config }) {
         } else {
           console.log("\nNo celular: WhatsApp > Aparelhos conectados > Conectar aparelho, e leia o QR:\n");
           qrcode.generate(qr, { small: true });
+          // Também em imagem, para quando o terminal não mostra o QR direito
+          await QRCode.toFile(qrFile, qr, { width: 480, margin: 2 }).catch(() => {});
+          console.log(`(o mesmo QR está em ${qrFile})`);
         }
       }
       if (connection === "open") {
         reconnectDelay = 2000;
+        rmSync(qrFile, { force: true });
         console.log(`Conectado como ${sock.user?.name || userPart(sock.user?.id)}. Mande mensagem em "Mensagem para você mesmo" (Você).`);
         refreshGroups().catch(err => logger.warn({ err }, "falha ao listar grupos"));
       }

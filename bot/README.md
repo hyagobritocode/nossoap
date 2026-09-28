@@ -57,7 +57,7 @@ Abra o `.env` num editor de texto, cole a sua chave em `GEMINI_API_KEY=` e ajust
 npm start
 ```
 
-Vai aparecer um QR code. No celular, abra **WhatsApp > Aparelhos conectados > Conectar um aparelho** e leia o QR. Se preferir um código de 8 letras, coloque seu número em `PAREAR_NUMERO` no `.env`.
+Vai aparecer um QR code. No celular, abra **WhatsApp > Aparelhos conectados > Conectar um aparelho** e leia o QR. Se o QR sair torto no terminal, abra a imagem `dados/qr.png`. Se preferir um código de 8 letras, coloque seu número em `PAREAR_NUMERO` no `.env`.
 
 Conectou? Mande "oi" ou "/ajuda" no **"Mensagem para você mesmo"**.
 
