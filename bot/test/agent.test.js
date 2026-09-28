@@ -78,6 +78,7 @@ test("markdown vira formatação do WhatsApp", () => {
   const md = "## Melhores ofertas\n\n\n- **TV LG** por R$ 2.199\n* [Amazon](https://amzn.to/x)\n<think>pensando</think>~~R$ 3.000~~";
   assert.equal(toWhatsApp(md), "*Melhores ofertas*\n\n• *TV LG* por R$ 2.199\n• Amazon: https://amzn.to/x\n~R$ 3.000~");
   assert.equal(toWhatsApp("*já no formato* _ok_"), "*já no formato* _ok_");
+  assert.equal(toWhatsApp("antes\n\n---\n\ndepois"), "antes\n\ndepois");
 });
 
 test("ago e texto de mensagens do WhatsApp", () => {

@@ -104,7 +104,7 @@ Tudo fica no `.env` (veja os comentários no `.env.example`):
 |---|---|
 | `IA` | `gemini` (padrão), `groq` ou `ollama`. |
 | `GEMINI_API_KEY` / `GROQ_API_KEY` | Chave da IA escolhida (o Ollama não precisa). |
-| `IA_MODELO` / `IA_MODELO_RESERVA` | Trocar o modelo principal e o reserva (usado quando a cota do dia do principal acaba). |
+| `IA_MODELO` / `IA_MODELO_RESERVA` | Trocar o modelo principal e a lista de reservas, separados por vírgula (usados quando o principal está sobrecarregado ou sem cota). |
 | `IA_RACIOCINIO` | `low`, `medium` ou `high`: quanto a IA pensa antes de responder, se o modelo aceitar. |
 | `IA_URL` | Qualquer outra IA compatível com a API da OpenAI (com `IA_CHAVE` e `IA_MODELO`). |
 | `GRUPOS` | Ler só os grupos cujo nome contém um desses pedaços. Vazio = todos. |
@@ -123,12 +123,12 @@ As três são gratuitas. O bot funciona com qualquer uma, e trocar é mudar `IA=
 | | Gemini (padrão) | Groq | Ollama |
 |---|---|---|---|
 | Onde pegar | [aistudio.google.com/apikey](https://aistudio.google.com/apikey) | [console.groq.com/keys](https://console.groq.com/keys) | [ollama.com](https://ollama.com), roda no seu PC |
-| Modelo padrão | `gemini-flash-latest`, reserva `gemini-flash-lite-latest` | `openai/gpt-oss-120b`, reserva `openai/gpt-oss-20b` | `qwen3:8b` |
+| Modelo padrão | `gemini-flash-latest`, com reservas `gemini-3.6-flash`, `gemini-flash-lite-latest` e `gemini-3.1-flash-lite` | `openai/gpt-oss-120b`, reserva `openai/gpt-oss-20b` | `qwen3:8b` |
 | Qualidade | A melhor das três em português e em entender pedidos | Boa e muito rápida | Depende do computador; modelos pequenos erram mais |
 | Limite | Cota gratuita por minuto e por dia; dá para uso pessoal | Cota gratuita por minuto e por dia | Nenhum |
 | Privacidade | No plano gratuito o Google pode usar o que for enviado para melhorar os produtos dele | Envia para a Groq | Nada sai do seu computador |
 
-**Gemini** é o padrão por ser a opção gratuita mais esperta. O nome `gemini-flash-latest` aponta sempre para o Flash mais novo, então o bot não para quando o Google lança outro. Os limites do plano gratuito mudam de tempos em tempos. Quando a cota do dia acaba, o bot passa sozinho para o modelo reserva (o Flash-Lite, que tem cota maior). Se os dois acabarem, ele avisa e volta a funcionar no dia seguinte. Cada pergunta usa de 2 a 4 pedidos à IA.
+**Gemini** é o padrão por ser a opção gratuita mais esperta. O nome `gemini-flash-latest` aponta sempre para o Flash mais novo, então o bot não para quando o Google lança outro. No plano gratuito é comum um modelo ficar "sobrecarregado" por um tempo, e os limites mudam de tempos em tempos. Quando isso acontece, ou quando a cota do dia acaba, o bot tenta sozinho os próximos modelos da lista de reservas. Se todos falharem, ele avisa e é só tentar de novo mais tarde. Cada pergunta usa de 2 a 4 pedidos à IA e costuma levar de 20 segundos a 1 minuto.
 
 **Ollama** é para quem quer tudo local e sem limite: instale, rode `ollama pull qwen3:8b` e use `IA=ollama`. Precisa de uns 16 GB de RAM (melhor com placa de vídeo). Modelos pequenos às vezes ignoram as ferramentas e respondem sem buscar.
 
@@ -157,7 +157,7 @@ npm test
 
 - `src/whatsapp.js`: conexão, leitura dos grupos, conversa e alertas.
 - `src/agent.js`: conversa com a IA e as ferramentas (buscar, ver oferta, abrir link, alertas).
-- `src/llm.js`: cliente para APIs de chat no formato da OpenAI (Gemini, Groq, Ollama), com espera e modelo reserva quando a cota acaba.
+- `src/llm.js`: cliente para APIs de chat no formato da OpenAI (Gemini, Groq, Ollama), com espera e lista de modelos reserva quando um está sobrecarregado ou sem cota.
 - `src/db.js`: banco SQLite com busca de texto (FTS5, sem acento), junção de repostagens e alertas.
 - `src/parse.js`: links, preço, loja e título de cada mensagem.
 - `src/link.js`: abre links (segue encurtadores, bloqueia endereços internos) e lê título e preço.

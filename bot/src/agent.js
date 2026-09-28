@@ -104,6 +104,7 @@ export function toWhatsApp(text) {
     .replace(/__(.+?)__/g, "_$1_")
     .replace(/~~(.+?)~~/g, "~$1~")
     .replace(/^#{1,6}\s+(.+)$/gm, "*$1*")
+    .replace(/^\s*([-*_])\1{2,}\s*$/gm, "")
     .replace(/^(\s*)[-*]\s+/gm, "$1• ")
     .replace(/\n{3,}/g, "\n\n")
     .trim();

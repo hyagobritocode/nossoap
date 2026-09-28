@@ -18,5 +18,5 @@ if (!ai.model) {
 const db = openDb(join(config.dataDir, "ofertas.db"));
 const llm = createLlm(ai);
 const agent = createAgent({ db, llm, config });
-console.log(`Banco: ${db.stats().total} ofertas guardadas. IA: ${ai.provider} (${ai.model}${ai.reserveModel ? `, reserva ${ai.reserveModel}` : ""}).`);
+console.log(`Banco: ${db.stats().total} ofertas guardadas. IA: ${ai.provider} (${ai.model}${ai.reserveModels.length ? `, reservas ${ai.reserveModels.join(", ")}` : ""}).`);
 await startWhatsApp({ db, agent, config });

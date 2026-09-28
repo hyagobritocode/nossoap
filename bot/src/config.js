@@ -25,8 +25,9 @@ export const config = {
     needsKey: !!preset?.keyEnv,
     keyEnv: preset?.keyEnv || "IA_CHAVE",
     model: env("IA_MODELO", preset?.model),
-    // Se o principal não existir ou a cota do dia acabar, usa este. "nenhum" desliga.
-    reserveModel: reserve === "nenhum" ? null : reserve,
+    // Tentados em ordem quando o principal está sobrecarregado, não existe ou
+    // ficou sem cota no dia. Separe por vírgula; "nenhum" desliga.
+    reserveModels: reserve === "nenhum" ? [] : reserve.split(",").map(m => m.trim()).filter(Boolean),
     // low, medium ou high: quanto a IA "pensa" antes de responder (se o modelo aceitar).
     reasoning: env("IA_RACIOCINIO", "") || null
   },

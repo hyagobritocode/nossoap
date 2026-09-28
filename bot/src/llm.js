@@ -3,12 +3,13 @@
 
 export const PROVIDERS = {
   // Google AI Studio: tem cota gratuita. Os apelidos "-latest" apontam sempre
-  // para o Flash mais novo, então o bot não fica preso a um modelo aposentado.
+  // para o Flash mais novo; os modelos fixos da lista de reserva entram quando o
+  // mais novo está sobrecarregado (acontece bastante no plano gratuito).
   gemini: {
     url: "https://generativelanguage.googleapis.com/v1beta/openai",
     keyEnv: "GEMINI_API_KEY",
     model: "gemini-flash-latest",
-    reserve: "gemini-flash-lite-latest"
+    reserve: "gemini-3.6-flash,gemini-flash-lite-latest,gemini-3.1-flash-lite"
   },
   // Groq: cota gratuita, muito rápido.
   groq: {
@@ -46,6 +47,7 @@ export function friendlyError(err) {
       return "A chave da IA foi recusada. Confira a chave no arquivo .env.";
     }
     if (err.status === 404) return "O modelo de IA configurado não existe mais. Troque o IA_MODELO no .env.";
+    if (err.status >= 500) return "A IA gratuita está sobrecarregada agora. Tenta de novo em alguns minutos.";
   }
   if (err?.name === "TimeoutError") return "A IA demorou demais para responder. Tenta de novo.";
   if (err?.cause?.code === "ECONNREFUSED") return "Não consegui falar com a IA (ela está ligada? No Ollama, rode `ollama serve`).";
@@ -66,7 +68,7 @@ async function toError(res) {
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-export function createLlm({ url, apiKey, model, reserveModel, reasoning, timeoutMs = 120_000 }, { fetchImpl = fetch, wait = sleep } = {}) {
+export function createLlm({ url, apiKey, model, reserveModels = [], reasoning, timeoutMs = 120_000 }, { fetchImpl = fetch, wait = sleep } = {}) {
   const endpoint = url.replace(/\/+$/, "") + "/chat/completions";
   const headers = { "content-type": "application/json" };
   if (apiKey) headers.authorization = `Bearer ${apiKey}`;
@@ -87,12 +89,12 @@ export function createLlm({ url, apiKey, model, reserveModel, reasoning, timeout
   return {
     model,
     /**
-     * Uma chamada de chat. Espera e repete quando a cota por minuto estoura ou o
-     * serviço oscila; se o modelo principal não existir ou a cota do dia acabar,
-     * tenta o modelo reserva.
+     * Uma chamada de chat. Na cota por minuto, espera e repete. Com o modelo
+     * sobrecarregado, inexistente ou sem cota no dia, passa para o próximo da
+     * lista de reserva.
      */
     async chat(body) {
-      const models = [model, reserveModel].filter((m, i, a) => m && a.indexOf(m) === i);
+      const models = [model, ...reserveModels].filter((m, i, a) => m && a.indexOf(m) === i);
       let last;
       for (const m of models) {
         for (let attempt = 0; attempt < 3; attempt++) {
@@ -102,7 +104,12 @@ export function createLlm({ url, apiKey, model, reserveModel, reasoning, timeout
             last = err;
             if (!(err instanceof LlmError)) throw err;
             if (err.status === 404 || (err.status === 429 && err.daily)) break;
-            if (err.status === 429 || err.status >= 500) {
+            if (err.status >= 500) {
+              if (attempt >= 1) break;          // sobrecarregado: uma nova tentativa e depois o próximo
+              await wait(1500);
+              continue;
+            }
+            if (err.status === 429) {
               await wait(Math.min(20_000, 2000 * 2 ** attempt));
               continue;
             }

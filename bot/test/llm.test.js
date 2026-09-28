@@ -13,7 +13,7 @@ function fakeFetch(responses) {
   };
 }
 
-const opts = { url: "https://x.test/v1/", apiKey: "k", model: "principal", reserveModel: "reserva" };
+const opts = { url: "https://x.test/v1/", apiKey: "k", model: "principal", reserveModels: ["reserva", "reserva2"] };
 const noWait = { wait: async () => {} };
 
 test("manda para /chat/completions com a chave e o modelo", async () => {
@@ -40,6 +40,15 @@ test("cota do dia ou modelo inexistente: passa para o reserva", async () => {
   const gone = fakeFetch([fail(404, "model not found"), ok({ choices: [3] })]);
   await createLlm(opts, { ...noWait, fetchImpl: gone.fetchImpl }).chat({});
   assert.deepEqual(gone.seen.map(s => s.model), ["principal", "reserva"]);
+});
+
+test("sobrecarregado: tenta de novo uma vez e segue a lista de reservas", async () => {
+  const busy = () => fail(503, "This model is currently experiencing high demand");
+  const f = fakeFetch([busy(), busy(), busy(), busy(), ok({ choices: [4] })]);
+  const r = await createLlm(opts, { ...noWait, fetchImpl: f.fetchImpl }).chat({});
+  assert.deepEqual(r.choices, [4]);
+  assert.deepEqual(f.seen.map(s => s.model), ["principal", "principal", "reserva", "reserva", "reserva2"]);
+  assert.match(friendlyError(new LlmError(503, "x")), /sobrecarregada/);
 });
 
 test("chave inválida não repete e vira mensagem clara", async () => {
