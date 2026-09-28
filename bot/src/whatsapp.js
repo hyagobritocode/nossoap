@@ -9,6 +9,7 @@ import { join } from "node:path";
 import pino from "pino";
 import qrcode from "qrcode-terminal";
 import { ago, makeDateFmt } from "./agent.js";
+import { friendlyError } from "./llm.js";
 
 const BOT_MARK = "🤖";
 const HELP = `${BOT_MARK} *Como usar*
@@ -139,7 +140,7 @@ export async function startWhatsApp({ db, agent, config }) {
       await send(jid, `${BOT_MARK} ${reply}`);
     } catch (err) {
       logger.error({ err }, "falha ao responder");
-      await send(jid, `${BOT_MARK} Deu erro ao buscar agora (${err.status || err.code || "sem detalhe"}). Tenta de novo em instantes.`);
+      await send(jid, `${BOT_MARK} ${friendlyError(err)}`);
     } finally {
       await sock.sendMessage(jid, { react: { text: "", key: msg.key } }).catch(() => {});
     }

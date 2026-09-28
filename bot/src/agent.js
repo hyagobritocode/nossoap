@@ -1,12 +1,12 @@
 // A parte que conversa: recebe o pedido, busca nas ofertas guardadas com a
-// ajuda do Claude e responde no formato do WhatsApp.
-import Anthropic from "@anthropic-ai/sdk";
+// ajuda da IA e responde no formato do WhatsApp.
 import { inspectLink } from "./link.js";
 
 const SYSTEM = `Você é um assistente pessoal de compras que mora no WhatsApp do usuário.
 Você tem acesso a um banco com as mensagens de oferta (as que têm link) postadas nos grupos de achadinhos e promoções que o usuário participa. O trabalho é poupar o usuário de abrir grupo por grupo: entender o que ele procura, buscar por ele, separar o que serve do que não serve e explicar.
 
 Como buscar:
+- Sempre use as ferramentas antes de falar de ofertas. Nunca responda de memória nem invente ofertas.
 - Entenda a intenção, não só as palavras. "tv 50 lg" = televisor LG de 50 polegadas; não é suporte, controle, painel nem capa.
 - A busca é por palavras, então passe variações e sinônimos em cada grupo de termos: ["tv","televisao","televisor","smart tv"], ["50","50 polegadas"], ["lg"]. Grupos são ligados por E; termos dentro do grupo, por OU. Use prefixo com * quando ajudar (["televis*"]).
 - Se vier pouco resultado, afrouxe (tire uma exigência, troque sinônimos) e busque de novo antes de dizer que não achou. Se vier resultado demais, aperte.
@@ -31,11 +31,11 @@ const TERMS_SCHEMA = {
   minItems: 1
 };
 
-const TOOLS = [
+const TOOL_SPECS = [
   {
     name: "buscar_ofertas",
     description: "Busca nas ofertas guardadas dos grupos. Devolve as mais recentes primeiro (ou por preço), já juntando a mesma oferta repostada em vários grupos.",
-    input_schema: {
+    parameters: {
       type: "object",
       properties: {
         termos: TERMS_SCHEMA,
@@ -53,22 +53,21 @@ const TOOLS = [
   {
     name: "ver_oferta",
     description: "Texto completo de uma oferta pelo id, com todos os links e onde mais ela foi repostada.",
-    input_schema: { type: "object", properties: { id: { type: "integer" } }, required: ["id"] }
+    parameters: { type: "object", properties: { id: { type: "integer" } }, required: ["id"] }
   },
   {
     name: "abrir_link",
     description: "Abre um link (segue encurtadores) e devolve o endereço final, o título e o preço publicado na página, quando a loja deixa.",
-    input_schema: { type: "object", properties: { url: { type: "string" } }, required: ["url"] }
+    parameters: { type: "object", properties: { url: { type: "string" } }, required: ["url"] }
   },
   {
     name: "visao_geral",
-    description: "Quantas ofertas há guardadas, de quais grupos e de que período.",
-    input_schema: { type: "object", properties: {} }
+    description: "Quantas ofertas há guardadas, de quais grupos e de que período."
   },
   {
     name: "criar_alerta",
     description: "Cria um alerta: quando uma oferta nova chegar nos grupos batendo com os termos (e abaixo do preço máximo, se houver), o usuário recebe aviso aqui.",
-    input_schema: {
+    parameters: {
       type: "object",
       properties: {
         descricao: { type: "string", description: "O que o usuário quer, em poucas palavras" },
@@ -80,15 +79,35 @@ const TOOLS = [
   },
   {
     name: "listar_alertas",
-    description: "Lista os alertas ativos.",
-    input_schema: { type: "object", properties: {} }
+    description: "Lista os alertas ativos."
   },
   {
     name: "remover_alerta",
     description: "Remove um alerta pelo id.",
-    input_schema: { type: "object", properties: { id: { type: "integer" } }, required: ["id"] }
+    parameters: { type: "object", properties: { id: { type: "integer" } }, required: ["id"] }
   }
 ];
+
+// Formato de ferramentas da API de chat (OpenAI). Ferramenta sem argumento vai
+// sem "parameters": alguns provedores recusam objeto com "properties" vazio.
+const TOOLS = TOOL_SPECS.map(({ name, description, parameters }) => ({
+  type: "function",
+  function: { name, description, ...(parameters ? { parameters } : {}) }
+}));
+
+/** Converte o Markdown que os modelos costumam mandar para a formatação do WhatsApp. */
+export function toWhatsApp(text) {
+  return (text || "")
+    .replace(/<think>[\s\S]*?<\/think>/g, "")
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, (_, label, url) => (label === url ? url : `${label}: ${url}`))
+    .replace(/\*\*(.+?)\*\*/g, "*$1*")
+    .replace(/__(.+?)__/g, "_$1_")
+    .replace(/~~(.+?)~~/g, "~$1~")
+    .replace(/^#{1,6}\s+(.+)$/gm, "*$1*")
+    .replace(/^(\s*)[-*]\s+/gm, "$1• ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
 
 export function makeDateFmt(timeZone) {
   const fmt = new Intl.DateTimeFormat("pt-BR", {
@@ -107,7 +126,7 @@ export function ago(ts, nowSec = Date.now() / 1000) {
 
 const clip = (s, n) => (s && s.length > n ? s.slice(0, n) + "…" : s);
 
-export function createAgent({ db, config, log = console, client = new Anthropic() }) {
+export function createAgent({ db, llm, config, log = console }) {
   const fmtDate = makeDateFmt(config.timeZone);
   const conversations = new Map(); // jid → { messages, lastAt }
 
@@ -173,28 +192,6 @@ export function createAgent({ db, config, log = console, client = new Anthropic(
     }
   }
 
-  function requestParams(messages) {
-    const params = {
-      model: config.model,
-      max_tokens: 16000,
-      system: SYSTEM,
-      tools: TOOLS,
-      cache_control: { type: "ephemeral" },
-      messages
-    };
-    if (!config.model.startsWith("claude-haiku")) {
-      params.thinking = { type: "adaptive" };
-      params.output_config = { effort: config.effort };
-    }
-    // Se o modelo recusar por engano (classificador de segurança), o próprio
-    // servidor refaz o pedido num modelo alternativo.
-    if (config.fallbacks) {
-      params.betas = ["server-side-fallback-2026-07-01"];
-      params.fallbacks = "default";
-    }
-    return params;
-  }
-
   function conversationFor(jid) {
     let c = conversations.get(jid);
     const idleMs = config.conversationTtlHours * 3600_000;
@@ -210,7 +207,7 @@ export function createAgent({ db, config, log = console, client = new Anthropic(
   function trim(messages, max = 60) {
     while (messages.length > max) {
       let i = 1;
-      while (i < messages.length && !(messages[i].role === "user" && typeof messages[i].content === "string")) i++;
+      while (i < messages.length && messages[i].role !== "user") i++;
       messages.splice(0, i);
     }
   }
@@ -225,33 +222,42 @@ export function createAgent({ db, config, log = console, client = new Anthropic(
       const messages = [...convo.messages, { role: "user", content: `[agora: ${stamp}]\n${text}` }];
 
       for (let step = 0; step < 12; step++) {
-        const res = await client.beta.messages.create(requestParams(messages));
-        messages.push({ role: "assistant", content: res.content });
+        const res = await llm.chat({ messages: [{ role: "system", content: SYSTEM }, ...messages], tools: TOOLS });
+        const choice = res.choices?.[0];
+        const msg = choice?.message;
+        if (!msg) throw new Error("a IA respondeu vazio");
 
-        if (res.stop_reason === "refusal") {
-          return "Não consegui responder esse pedido. Tenta falar de outro jeito?";
-        }
-        if (res.stop_reason === "pause_turn") continue;
+        const calls = (msg.tool_calls || []).map((c, i) => ({ ...c, id: c.id || `chamada_${step}_${i}` }));
+        // Devolve a mensagem da IA como veio (o Gemini exige de volta a "assinatura"
+        // que ele manda junto de cada chamada de ferramenta).
+        const assistant = { role: "assistant", content: msg.content ?? (calls.length ? null : "") };
+        if (calls.length) assistant.tool_calls = calls;
+        if (msg.extra_content) assistant.extra_content = msg.extra_content;
+        messages.push(assistant);
 
-        const calls = res.content.filter(b => b.type === "tool_use");
-        if (res.stop_reason !== "tool_use" || !calls.length) {
+        if (!calls.length) {
           convo.messages = messages;
           convo.lastAt = Date.now();
           trim(convo.messages);
-          const reply = res.content.filter(b => b.type === "text").map(b => b.text).join("\n").trim();
+          const reply = toWhatsApp(msg.content);
+          if (choice.finish_reason === "length") return `${reply}\n\n_(resposta cortada por tamanho)_`;
           return reply || "Não achei nada para responder.";
         }
 
         const results = await Promise.all(calls.map(async call => {
+          const name = call.function?.name;
+          let out;
           try {
-            const out = await runTool(call.name, call.input, jid);
-            return { type: "tool_result", tool_use_id: call.id, content: JSON.stringify(out) };
+            const raw = call.function?.arguments;
+            const input = typeof raw === "string" ? (raw.trim() ? JSON.parse(raw) : {}) : (raw || {});
+            out = await runTool(name, input, jid);
           } catch (err) {
-            log.warn?.(`ferramenta ${call.name} falhou: ${err.message}`);
-            return { type: "tool_result", tool_use_id: call.id, is_error: true, content: String(err.message || err) };
+            log.warn?.(`ferramenta ${name} falhou: ${err.message}`);
+            out = { erro: String(err.message || err) };
           }
+          return { role: "tool", tool_call_id: call.id, name, content: JSON.stringify(out) };
         }));
-        messages.push({ role: "user", content: results });
+        messages.push(...results);
       }
       return "Essa ficou comprida demais e eu parei no meio. Pode reformular de um jeito mais específico?";
     }

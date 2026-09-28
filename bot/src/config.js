@@ -1,5 +1,6 @@
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
+import { PROVIDERS } from "./llm.js";
 
 if (existsSync(".env")) process.loadEnvFile(".env");
 
@@ -7,15 +8,28 @@ const env = (k, d) => (process.env[k] ?? "").trim() || d;
 const list = k => env(k, "").split(",").map(s => s.trim()).filter(Boolean);
 const digits = s => s.replace(/\D/g, "");
 
-const model = env("CLAUDE_MODELO", "claude-opus-5");
+const providerName = env("IA", "gemini").toLowerCase();
+const preset = PROVIDERS[providerName];
+if (!preset && !process.env.IA_URL) {
+  throw new Error(`IA="${providerName}" não existe. Use ${Object.keys(PROVIDERS).join(", ")}, ou defina IA_URL.`);
+}
+const reserve = env("IA_MODELO_RESERVA", preset?.reserve || "nenhum");
 
 export const config = {
   dataDir: resolve(env("PASTA_DADOS", "dados")),
   timeZone: env("FUSO", "America/Sao_Paulo"),
-  model,
-  effort: env("CLAUDE_ESFORCO", "medium"),
-  // fallback automático no servidor só existe para os modelos maiores
-  fallbacks: env("CLAUDE_FALLBACK", /^claude-(opus-5|fable-5)/.test(model) ? "sim" : "nao") === "sim",
+  ai: {
+    provider: preset ? providerName : "outro",
+    url: env("IA_URL", preset?.url),
+    apiKey: env("IA_CHAVE", preset?.keyEnv ? env(preset.keyEnv, "") : ""),
+    needsKey: !!preset?.keyEnv,
+    keyEnv: preset?.keyEnv || "IA_CHAVE",
+    model: env("IA_MODELO", preset?.model),
+    // Se o principal não existir ou a cota do dia acabar, usa este. "nenhum" desliga.
+    reserveModel: reserve === "nenhum" ? null : reserve,
+    // low, medium ou high: quanto a IA "pensa" antes de responder (se o modelo aceitar).
+    reasoning: env("IA_RACIOCINIO", "") || null
+  },
   conversationTtlHours: Number(env("CONVERSA_EXPIRA_HORAS", "3")),
   // Se vazio, guarda ofertas de todos os grupos. Senão, só dos grupos cujo nome
   // contém um desses pedaços (sem diferença de maiúscula/acento).
